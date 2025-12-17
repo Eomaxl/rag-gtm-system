@@ -44,6 +44,6 @@ async def get_query_processor() -> QueryProcessor:
     return MockQueryProcessor()
 
 # Type aliases for dependency injection
-EmbeddingServiceProvider = Annotated[EmbeddingProvider, Depends(get_embedding_service)]
+EmbeddingServiceDep = Annotated[EmbeddingProvider, Depends(get_embedding_service)]
 VectorStoreDep = Annotated[VectorStore, Depends(get_vector_service)]
 QueryProcessorDep = Annotated[QueryProcessor, Depends(get_embedding_service)]
