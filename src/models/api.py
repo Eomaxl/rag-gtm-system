@@ -1,6 +1,6 @@
 """ Pydantic models for API Validation """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from .core import PersonaType
 
