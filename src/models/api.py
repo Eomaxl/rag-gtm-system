@@ -3,7 +3,7 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Optional, Dict, Any, Union
 from .core import PersonaType
-from datetime import datetime
+from datetime import datetime, UTC
 import re
 from .core import PersonaType
 
@@ -98,10 +98,84 @@ class QueryRequest(BaseModel):
 
         return self
 
-class QueryRequest(BaseModel):
-    """Pydantic model for API Response"""
-    answer: str
-    confidence: float = Field(..., ge=0.0, le=1.0)
-    sources: List[Dict[str,Any]]
-    persona_context: str
-    processing_time_ms: int
+class QueryResponse(BaseModel):
+    """Response model with confidence scoring and validation"""
+    answer: str = Field(..., min_length=1, description="Generated answer text")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score for the answer")
+    sources: List[Dict[str,Any]] = Field(..., description="Source documents used for the answer")
+    persona_context: str = Field(...,description="Persona-specific context applied")
+    processing_time_ms: int = Field(..., ge=0, description="Processing time in milliseconds")
+    timestamp: datetime = Field(default_factory=datetime.now(UTC), description="Response timestamp")
+
+    @field_validator('answer')
+    @classmethod
+    def validate_answer_quality(cls, v:str) -> str:
+        """ Validate answer quality and content """
+        if not v.strip():
+            raise ValueError("Answer cannot be empty")
+        
+        # Check for minimum answer length for quality
+        if len(v.strip()) < 10:
+            raise ValueError("Answer is too short - minimum 10 characters required")
+        
+        # Check for maximum reasonable length
+        if len(v) > 10000:
+            raise ValueError("Answer is too long - maximum 10000 characters allowed")
+        
+        return v.strip()
+    
+    @field_validator('sources')
+    @classmethod
+    def validate_sources_structure(cls, v: List[Dict[str,Any]]) -> List[Dict[str,Any]]:
+        """ Validate source documents structure """
+        if not isinstance(v, list):
+            raise ValueError("Sources must be a list")
+        
+        required_score_fields = {'id','title','relevance_score'}
+
+        for i, source in enumerate(v):
+            if not isinstance(source, dict):
+                raise ValueError(f"Source {i} must be a dictionary")
+            
+            # Check required fields
+            missing_fields = required_score_fields - set(source.keys())
+            if missing_fields:
+                raise ValueError(f"Source {i} missing required fields: {missing_fields}")
+            
+            # Validate relevant score
+            if 'relevance_score' in source:
+                score = source['relevance_score']
+                if not isinstance(score, (int, float)) or not (0.0 <= score <= 1.0):
+                    raise ValueError(f"Source {i} relevance_score must be between 0.0 and 1.0")
+        
+        return v
+    
+    @field_validator('confidence')
+    @classmethod
+    def validate_confidence_reasonableness(cls, v: float)-> float:
+        """ Validate confidence score reasonableness """
+        # Very low confidence might indicate a problem
+        if v < 0.1:
+            # In a real system, this might trigger additional validation or warnings
+            pass
+
+        return v
+    
+    @model_validator(mode='after')
+    def validate_response_consistency(self) -> 'QueryResponse' :
+        """ Validate overall response consistency """
+        # Check that confidence aligns with source quality
+        if self.sources:
+            avg_relevance = sum(s.get('relevance_score',0.0) for s in self.sources) / len(self.sources)
+
+            # Confidence shouldn't be much higher than average source relevance
+            if self.confidence > avg_relevance + 0.3:
+                # In production, this might log a warning or adjust confidence
+                pass
+
+        # Validate processing time reasonableness
+        if self.processing_time_ms > 30000: # 30 seconds
+            # log warning for very slow responses
+            pass
+
+        return self
