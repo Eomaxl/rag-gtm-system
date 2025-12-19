@@ -324,3 +324,131 @@ class AsyncDatabase:
             "min_size": self._pool.get_min_size(),
             "max_size": self._pool.get_max_size(),
         }
+    
+# Repository classes for specific entities
+
+class DocumentRepository:
+    """ Repository for document operations """
+    
+    def __init__(self, db: AsyncDatabase):
+        self.db = db
+
+    async def create(
+        self,
+        doc_id: str,
+        content: str,
+        metadata: Dict[str, Any],
+        embedding_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """ Create a new document """
+        query = """
+        INSERT INTO documents (id, content, metadata, embedding_id)
+        VALUES ($1, $2, $3, $4)
+        RETURNING *
+        """
+        return await self.db.fetchrow(query, doc_id, content, metadata, embedding_id)
+    
+    async def get(self, doc_id: str) -> Optional[Dict[str, Any]]:
+        """ Get a document by ID """
+        query = "SELECT * FROM documents WHERE id = $1"
+        return await self.db.fetchrow(query, doc_id)
+    
+    async def list(
+        self,
+        limit: int = 100,
+        offset: int = 0      
+    ) -> List[Dict[str, Any]]:
+        """List documents with pagination"""
+        query = """
+        SELECT * FROM documents
+        ORDER BY created_at DESC
+        LIMIT $1 OFFSET $2
+        """
+        return await self.db.fetch(query,limit,offset)
+    
+    async def update(
+            self,
+            doc_id: str,
+            content: Optional[str] = None,
+            metadata: Optional[Dict[str, Any]] = None
+    ) -> Optional[Dict[str, Any]]:
+        """ Update a document """
+        if content is not None:
+            query = """
+            UPDATE documents
+            SET content=$2, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+            RETURNING *
+            """
+            return await self.db.fetchrow(query, doc_id, content)
+        elif metadata is not None:
+            query = """
+            UPDATE documents
+            SET metadata = $2, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+            RETURNING *
+            """
+            return await self.db.fetchrow(query, doc_id, metadata)
+        
+    async def delete(self, doc_id: str) -> bool:
+        """ Delete a document """
+        query = "DELETE FROM documents WHERE id = $1"
+        result = await self.db.execute(query, doc_id)
+        return "DELETE 1" in result
+    
+    async def count(self) -> int:
+        """ Count total documents """
+        query = "SELECT COUNT(*) FROM documents"
+        return await self.db.fetchval(query)
+    
+class QueryHistoryRepository:
+    """ Repository for query history operations """
+
+    def __init__(self, db: AsyncDatabase):
+        self.db = db
+
+    async def create(
+        self,
+        query: str,
+        persona_id: str,
+        response: str,
+        confidence: float,
+        processing_time_ms: int
+    ) -> Dict[str, Any]:
+        """ Record a query in history """
+        sql = """
+        INSERT INTO query_history (query, persona_id, response, confidence, processing_time_ms)
+        VALUES ( $1, $2, $3, $4 , $5)
+        RETURNING *
+        """
+        return await self.db.fetch(sql, query, persona_id, response, confidence, processing_time_ms)
+    
+    async def get_recent(
+        self,
+        persona_id: Optional[str] = None,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """ Get recent queries """
+        if persona_id :
+            sql = """
+            SELECT * FROM query_history
+            WHERE person_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2
+            """
+            return await self.db.fetch(sql, persona_id, limit)
+        else:
+            sql = """
+            SELECT * FROM query_history
+            ORDER BY created_at DESC
+            LIMIT BY $1
+            """
+            return await self.db.fetch(sql, limit)
+        
+    async def get_stats(self, persona_id: Optional[str] = None) -> Dict[str, Any]:
+        """ Get query statistics """
+        if persona_id:
+            sql = """
+            
+            """
+        
